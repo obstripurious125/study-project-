@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom Practice - My PW</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js"></script>
+  <style>
+    .option { border: 1px solid #ddd; padding: 12px; margin: 8px 0; border-radius: 12px; cursor: pointer; transition: 0.2s; }
+    .option:hover { background: #f3f4f6; }
+    .option.correct { background: #d1fae5; border-color: #10b981; }
+    .option.wrong { background: #fee2e2; border-color: #ef4444; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <nav class="bg-white shadow-md px-8 py-4 flex justify-between items-center">
+    <div class="flex items-center gap-3">
+      <h1 class="text-3xl font-bold text-blue-600">My PW</h1>
+      <span class="text-gray-500 text-sm">Custom Practice</span>
+    </div>
+    <div class="flex gap-6">
+      <a href="dashboard.html" class="text-gray-600 hover:text-blue-600">Dashboard</a>
+      <a href="analytics.html" class="text-gray-600 hover:text-blue-600">Analytics</a>
+      <button onclick="logout()" class="px-5 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-2xl">Logout</button>
+    </div>
+  </nav>
+
+  <div class="max-w-4xl mx-auto px-8 py-10">
+    <h2 class="text-3xl font-bold text-gray-800 mb-2">📝 Custom Practice</h2>
+    <p id="topicBadge" class="text-gray-600 mb-6"></p>
+
+    <div id="practiceContainer">
+      <div id="questionCard" class="bg-white rounded-3xl shadow-xl p-6 mb-6">
+        <div class="flex justify-between items-start mb-4">
+          <span id="qNum" class="text-sm font-medium bg-blue-100 text-blue-700 px-3 py-1 rounded-full">Q1</span>
+          <span id="topicTag" class="text-xs bg-gray-200 px-3 py-1 rounded-full"></span>
+        </div>
+        <div id="questionText" class="text-lg font-medium mb-6"></div>
+        <div id="optionsList"></div>
+        <div class="flex justify-between mt-8">
+          <button id="prevBtn" class="px-6 py-2 border rounded-2xl hover:bg-gray-100">Previous</button>
+          <button id="nextBtn" class="px-6 py-2 bg-blue-600 text-white rounded-2xl hover:bg-blue-700">Next</button>
+        </div>
+      </div>
+      <div class="flex justify-end gap-4">
+        <button id="resetBtn" class="px-6 py-2 border rounded-2xl hover:bg-gray-100">Reset Answers</button>
+        <button id="submitBtn" class="px-6 py-2 bg-green-600 text-white rounded-2xl hover:bg-green-700">Submit & Show Results</button>
+      </div>
+    </div>
+
+    <div id="resultsCard" class="hidden bg-white rounded-3xl shadow-xl p-6 mt-6">
+      <h3 class="text-xl font-semibold mb-4">🎯 Your Score</h3>
+      <div id="scoreDisplay" class="text-4xl font-bold text-blue-600 mb-4"></div>
+      <div id="detailedResults"></div>
+      <button onclick="location.reload()" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-2xl">Practice More</button>
+    </div>
+  </div>
+
+  <script>
+    let questions = [];
+    let userAnswers = [];
+    let currentIndex = 0;
+    let submitted = false;
+
+    async function loadPractice() {
+      const urlParams = new URLSearchParams(window.location.search);
+      let topics = urlParams.get('topics');
+      if (!topics) {
+        try {
+          const weakRes = await fetch('/api/analytics/weak-topics?threshold=50', { credentials: 'include' });
+          const weak = await weakRes.json();
+          if (weak.length === 0) {
+            document.getElementById('practiceContainer').innerHTML = '<p class="text-center text-gray-500">No weak topics found. Great job! 🎉</p>';
+            return;
+          }
+          topics = weak.map(t => t.topic).join(',');
+          document.getElementById('topicBadge').innerHTML = `Practicing weak topics: ${weak.map(t => t.topic).join(', ')}`;
+        } catch (err) {
+          document.getElementById('practiceContainer').innerHTML = '<p class="text-red-500">Failed to load topics</p>';
+          return;
+        }
+      } else {
+        document.getElementById('topicBadge').innerHTML = `Practicing topics: ${decodeURIComponent(topics).replace(/,/g, ', ')}`;
+      }
+
+      try {
+        const res = await fetch(`/api/practice/custom?topics=${encodeURIComponent(topics)}&limit=10`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load questions');
+        questions = await res.json();
+        if (questions.length === 0) {
+          document.getElementById('practiceContainer').innerHTML = '<p class="text-center text-gray-500">No questions available for these topics yet. Keep solving DPPs!</p>';
+          return;
+        }
+        userAnswers = new Array(questions.length).fill(null);
+        renderQuestion();
+        renderMath();
+      } catch (err) {
+        console.error(err);
+        document.getElementById('practiceContainer').innerHTML = '<p class="text-red-500">Error loading questions</p>';
+      }
+    }
+
+    function renderQuestion() {
+      if (submitted) return;
+      const q = questions[currentIndex];
+      document.getElementById('qNum').innerText = `Q${currentIndex+1}`;
+      document.getElementById('topicTag').innerText = q.topic || 'General';
+      document.getElementById('questionText').innerHTML = q.text;
+      const optsDiv = document.getElementById('optionsList');
+      optsDiv.innerHTML = '';
+      q.options.forEach((opt, i) => {
+        const optDiv = document.createElement('div');
+        optDiv.className = 'option';
+        if (userAnswers[currentIndex] === i) optDiv.classList.add('selected', 'border-blue-500', 'bg-blue-50');
+        optDiv.innerHTML = `${String.fromCharCode(65+i)}. ${opt}`;
+        optDiv.onclick = () => {
+          if (!submitted) {
+            userAnswers[currentIndex] = i;
+            renderQuestion();
+          }
+        };
+        optsDiv.appendChild(optDiv);
+      });
+      document.getElementById('prevBtn').disabled = (currentIndex === 0);
+      document.getElementById('nextBtn').disabled = (currentIndex === questions.length - 1);
+      renderMath();
+    }
+
+    function renderMath() {
+      if (typeof renderMathInElement !== 'undefined') {
+        renderMathInElement(document.getElementById('questionCard'), {
+          delimiters: [{left: '\\\\(', right: '\\\\)', display: false}, {left: '\\\\[', right: '\\\\]', display: true}]
+        });
+      }
+    }
+
+    function nav(delta) {
+      const newIdx = currentIndex + delta;
+      if (newIdx >= 0 && newIdx < questions.length) {
+        currentIndex = newIdx;
+        renderQuestion();
+      }
+    }
+
+    function resetAnswers() {
+      if (confirm('Reset all answers?')) {
+        userAnswers.fill(null);
+        renderQuestion();
+      }
+    }
+
+    function submitPractice() {
+      if (submitted) return;
+      let correct = 0;
+      const results = [];
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const userAns = userAnswers[i];
+        const isCorrect = (userAns !== null && userAns === q.correctAnswer);
+        if (isCorrect) correct++;
+        results.push({
+          text: q.text,
+          userAnswer: userAns !== null ? String.fromCharCode(65+userAns) : 'Not answered',
+          correctAnswer: String.fromCharCode(65+q.correctAnswer),
+          isCorrect: isCorrect,
+          explanation: q.explanation || ''
+        });
+      }
+      const percentage = (correct / questions.length) * 100;
+      document.getElementById('scoreDisplay').innerHTML = `${correct}/${questions.length} (${percentage.toFixed(1)}%)`;
+      let detailsHtml = '';
+      results.forEach((r, idx) => {
+        detailsHtml += `<div class="border-b pb-3 mb-3">
+          <p class="font-medium">Q${idx+1}: ${r.text.substring(0, 100)}...</p>
+          <p>Your answer: <span class="${r.isCorrect ? 'text-green-600' : 'text-red-600'}">${r.userAnswer}</span> | Correct: ${r.correctAnswer}</p>
+          ${r.explanation ? `<p class="text-sm text-gray-500">Explanation: ${r.explanation}</p>` : ''}
+        </div>`;
+      });
+      document.getElementById('detailedResults').innerHTML = detailsHtml;
+      document.getElementById('practiceContainer').classList.add('hidden');
+      document.getElementById('resultsCard').classList.remove('hidden');
+      submitted = true;
+    }
+
+    document.getElementById('prevBtn').addEventListener('click', () => nav(-1));
+    document.getElementById('nextBtn').addEventListener('click', () => nav(1));
+    document.getElementById('resetBtn').addEventListener('click', resetAnswers);
+    document.getElementById('submitBtn').addEventListener('click', submitPractice);
+
+    async function logout() {
+      await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+      window.location.href = '/login.html';
+    }
+
+    window.onload = loadPractice;
+  </script>
+</body>
+</html>
