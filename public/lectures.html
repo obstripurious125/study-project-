@@ -1613,4 +1613,73 @@ async function executeManageAction() {
       if (res.ok) {
         showToast(`✅ ${data.createdLectures} lectures added!`, "success");
         document.getElementById('bulk-json').value = '';
-     
+        await loadData();
+      } else showToast(data.error || "Failed to add lectures", "error");
+    }
+    if (manageMode === 2) await populateLectureChapterSelect();
+    if (manageMode === 3) await populateDeleteChapterSelect();
+    if (manageMode === 4) {
+      await populateDeleteLectureChapterSelect();
+      document.getElementById('delete-lecture-select').innerHTML = '<option value="">Select Chapter first</option>';
+    }
+    if (manageMode === 5) {
+      await populateUpdateChapterSelect();
+      document.getElementById('update-lecture-select').innerHTML = '<option value="">Select Chapter first</option>';
+    }
+  } catch (err) { console.error(err); showToast("Action failed. Check console.", "error"); }
+  finally { confirmBtn.textContent = originalText; confirmBtn.disabled = false; }
+}
+// ========== RESOURCE MODAL FUNCTIONS (add this) ==========
+function openResourceModal(lectureId, pdfLink, hasDpp, printableLink) {
+    const modal = document.getElementById('resource-modal');
+    const container = document.getElementById('resource-options');
+    if (!modal || !container) return;
+
+    container.innerHTML = '';
+
+    // Class PDF button
+    if (pdfLink && pdfLink.trim() !== '') {
+        const pdfBtn = document.createElement('button');
+        pdfBtn.className = 'w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-2xl font-medium flex items-center justify-center gap-2';
+        pdfBtn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Class PDF';
+        pdfBtn.onclick = () => {
+            window.open(pdfLink, '_blank');
+            closeResourceModal();
+        };
+        container.appendChild(pdfBtn);
+    }
+
+    // Printable Notes button
+    if (printableLink && printableLink.trim() !== '') {
+        const notesBtn = document.createElement('button');
+        notesBtn.className = 'w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl font-medium flex items-center justify-center gap-2';
+        notesBtn.innerHTML = '<i class="fa-solid fa-print"></i> Printable Notes';
+        notesBtn.onclick = () => {
+            window.open(printableLink, '_blank');
+            closeResourceModal();
+        };
+        container.appendChild(notesBtn);
+    }
+
+    // DPP button – only if the lecture has a DPP (hasDpp === true)
+    if (hasDpp === true) {
+        const dppBtn = document.createElement('button');
+        dppBtn.className = 'w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-2xl font-medium flex items-center justify-center gap-2';
+        dppBtn.innerHTML = '<i class="fa-solid fa-puzzle-piece"></i> DPP';
+        dppBtn.onclick = () => {
+            window.location.href = `/dpp-viewer.html?lectureId=${lectureId}`;
+            closeResourceModal();
+        };
+        container.appendChild(dppBtn);
+    }
+
+    if (container.children.length === 0) {
+        container.innerHTML = '<p class="text-center text-gray-500 py-4">No resources available for this lecture.</p>';
+    }
+
+    modal.classList.remove('hidden');
+}
+window.onload = async () => { await checkAuth(); await loadData(); };
+</script>
+</body>
+</html>
